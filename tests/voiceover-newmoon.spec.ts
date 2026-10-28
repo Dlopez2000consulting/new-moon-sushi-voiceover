@@ -112,6 +112,9 @@ test.describe("VoiceOver — www.newmoonsushi.com (baseline)", () => {
       }
 
       const vo: any = voiceOver;
+      // VO_VIEWER_ONLY=1 reruns only the gallery photo-viewer scenario.
+      const viewerOnly = process.env.VO_VIEWER_ONLY === "1";
+      if (!viewerOnly) {
       await run("Read-through from the top (VO-Right Arrow)", Math.round(pg.read * READ_SCALE), () => voiceOver.next({ capture: true }), false, t0 + READ_BUDGET_MS, 12 * 60 * 1000);
 
       await back();
@@ -128,6 +131,7 @@ test.describe("VoiceOver — www.newmoonsushi.com (baseline)", () => {
       await run("Tab order (Tab key)", TAB_STEPS, async () => { await voiceOver.press("Tab"); tabNotes.push(`Tab ${tabNotes.length + 1}: focus ${await focusInfo()}`); }, false, Infinity, 2 * 60 * 1000);
       sections[sections.length - 1].notes = tabNotes;
       flush();
+      }
 
       // Gallery photo viewer: open the first photo with Enter, close it with Escape, see where keyboard focus goes (F5).
       if (pg.slug === "gallery" && left() > 4 * 60 * 1000) {
@@ -136,12 +140,13 @@ test.describe("VoiceOver — www.newmoonsushi.com (baseline)", () => {
           await page.goto(url, { waitUntil: "load" });
           await page.waitForTimeout(4000);
           await back();
-          const opener = page.locator('[data-hook="item-container"] [role="button"]').first();
-          await opener.focus();
-          await page.waitForTimeout(500);
-          notes.push(`Focus placed on the first photo: ${await focusInfo()}. Shift+Tab, then Tab, so VoiceOver announces it.`);
-          await voiceOver.press("Shift+Tab");
-          await voiceOver.press("Tab"); phrases.push(await say());
+          // Tab from the top until keyboard focus is on the first photo (focus() from script left VoiceOver elsewhere).
+          const onPhoto = () => page.evaluate(() => !!document.activeElement?.closest('[data-hook="item-container"]'));
+          let tabs = 0;
+          while (tabs < 20 && !(await onPhoto())) { await voiceOver.press("Tab"); tabs++; }
+          if (!(await onPhoto())) throw new Error(`first photo not reached after ${tabs} Tab presses (focus ${await focusInfo()})`);
+          phrases.push(await say());
+          notes.push(`Reached the first photo after ${tabs} Tab presses: ${await focusInfo()}.`);
           await voiceOver.press("Enter"); await page.waitForTimeout(2000); phrases.push(await say());
           notes.push(`After Enter: dialog open ${await page.evaluate(() => !!document.querySelector('[role="dialog"]'))}; focus ${await focusInfo()}.`);
           await voiceOver.press("Tab"); phrases.push(await say());
@@ -160,7 +165,7 @@ test.describe("VoiceOver — www.newmoonsushi.com (baseline)", () => {
       const total = sections.reduce((a, s) => a + s.phrases.length, 0);
       flush(spoken);
       await testInfo.attach(`voiceover-${pg.slug}-${browserName}`, { path: file, contentType: "text/plain" });
-      expect(total).toBeGreaterThan(10);
+      expect(total).toBeGreaterThan(viewerOnly ? 3 : 10);
     });
   }
 });

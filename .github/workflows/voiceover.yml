@@ -11,6 +11,10 @@ on:
         description: "all, or a comma-separated list of pages (home,gallery,sushi-menu,contact)"
         default: "all"
         required: false
+      viewer_only:
+        description: "1 = run only the gallery photo-viewer scenario"
+        default: "0"
+        required: false
 
 permissions:
   contents: read
@@ -42,6 +46,7 @@ jobs:
     env:
       VO_PAGES: ${{ matrix.page }}
       VO_READ_SCALE: ${{ inputs.read_scale }}
+      VO_VIEWER_ONLY: ${{ inputs.viewer_only }}
       RUNNER_OS_LABEL: macos-15
     steps:
       - uses: actions/checkout@v6
