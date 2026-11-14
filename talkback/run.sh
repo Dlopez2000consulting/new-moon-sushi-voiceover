@@ -50,6 +50,10 @@ log "after install: $(adb shell pm path $TB | tr -d '\r')"
 # No notification prompts over the page (TalkBack and Chrome both ask on first start).
 adb shell pm grant $TB android.permission.POST_NOTIFICATIONS 2>&1 | tee -a logs/setup.txt
 adb shell pm grant com.android.chrome android.permission.POST_NOTIFICATIONS 2>&1 | tee -a logs/setup.txt
+# No on-screen keyboard: the Tab key comes from the emulator's keyboard, and the soft keyboard opening and closing
+# adds announcements that are not part of the page.
+adb shell ime disable com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME 2>&1 | tee -a logs/setup.txt
+log "enabled input methods: $(adb shell ime list -s | tr -d '\r' | tr '\n' ' ')"
 {
   echo "fingerprint: $(adb shell getprop ro.build.fingerprint | tr -d '\r')"
   echo "sdk: $(adb shell getprop ro.build.version.sdk | tr -d '\r')"
@@ -78,7 +82,7 @@ adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 
 log "focus: $(adb shell dumpsys window | grep -m2 -E 'mCurrentFocus|mFocusedApp' | tr -d '\r' | tr '\n' ' ')"
 adb shell dumpsys accessibility > logs/dumpsys-accessibility.txt 2>&1 || true
 adb exec-out screencap -p > logs/after-enable.png || true
-timeout 3000 node talkback/drive.mjs 2>&1 | tee logs/drive.txt
+timeout 9600 node talkback/drive.mjs 2>&1 | tee logs/drive.txt
 adb exec-out screencap -p > logs/end.png || true
 adb shell dumpsys accessibility > logs/dumpsys-accessibility-end.txt 2>&1 || true
 sleep 2
