@@ -18,7 +18,10 @@ const ALL = ['home', 'gallery', 'menu', 'lunch-menu', 'dinner-menu', 'sushi-menu
 // Linear read-through length per page (the plan of the desktop screen-reader runs); a read stops earlier after eight
 // gestures in a row with nothing spoken.
 const NEXT = { fixture: 16, home: 70, gallery: 220, menu: 60, 'lunch-menu': 150, 'dinner-menu': 150, 'sushi-menu': 90, 'dessert-menu': 80, 'sake-menu': 120, contact: 60, accessibility: 80, sitemap: 60 };
-const PAGES = SPIKE
+// TB_MENU=1: one session on Home inside the accessibility menu (Tab to its button, Enter, Tab through the dialog, Escape).
+const MENU = process.env.TB_MENU === '1';
+const PAGES = MENU ? [{ slug: 'menu-dialog', url: 'https://www.newmoonsushi.com/' }]
+  : SPIKE
   ? [{ slug: 'fixture', url: 'http://localhost:8000/index.html' }]
   : (process.env.TB_PAGES || 'all').split(',').map(s => s.trim()).filter(Boolean)
       .flatMap(s => (s === 'all' ? ALL : [s]))
@@ -172,7 +175,9 @@ for (const pg of PAGES) {
     `Page: ${pg.url}`,
     `Mode: ${SPIKE ? 'test page served on the runner' : MODE}`,
     `Session date (UTC): ${new Date().toISOString()}`,
-    SCALE > 0
+    MENU
+      ? `Method: on the Home page, the Tab key of the emulator keyboard moves to the accessibility menu button, Enter opens the menu, the Tab key moves through the dialog (24 presses), and Escape closes it; one key at a time after TalkBack finished speaking. TalkBack's spoken text is read from logcat, where this build logs every spoken fragment.`
+      : SCALE > 0
       ? `Method: linear reading with TalkBack's next-item command, one command at a time after TalkBack finished speaking; then the Tab order with the Tab key after loading the page again. TalkBack's spoken text is read from logcat, where this build logs every spoken fragment.`
       : `Method: the Tab order with the Tab key of the emulator keyboard, one key at a time after TalkBack finished speaking, from the top of a freshly loaded page. TalkBack's spoken text is read from logcat, where this build logs every spoken fragment. Linear reading with TalkBack's own navigation commands (swipe gestures or keyboard commands) is not included: on the emulator those commands did not move into the web content.`,
     `─`.repeat(56), ''];
@@ -196,6 +201,38 @@ for (const pg of PAGES) {
       });
       lines.push(`(Read ended after ${r.rows.length} commands: ${r.end}.)`);
       sum.next = { ...(sum.next || {}), [SPIKE ? method : 'read']: { planned: n, done: r.rows.length, spoken: r.rows.filter(x => x.length).length, end: r.end } };
+    }
+    if (MENU) {
+      const dialogOpen = () => page.evaluate(() => { const d = document.getElementById('nms-a11y-dialog'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none' && getComputedStyle(d).visibility !== 'hidden'; }).catch(() => null);
+      const expanded = () => page.evaluate(() => document.getElementById('nms-a11y-open')?.getAttribute('aria-expanded')).catch(() => null);
+      const rec = (label, fr) => { const us = say(fr); lines.push(label); if (!us.length) lines.push('  TalkBack: (nothing spoken)'); us.forEach(u => lines.push(`  TalkBack: ${u}`)); return us; };
+      lines.push('', '### Accessibility menu: Tab to the menu button, open with Enter, Tab through the dialog, close with Escape');
+      for (let k = 0; k < 2; k++) { await device.shell('input keyevent 111'); await sleep(600); }
+      await sleep(2500); pull(); await settle(6000);
+      let tabs = 0, onButton = false;
+      while (tabs < 40 && !onButton) {
+        await tabKey(); const fr = await settle(); tabs++;
+        const f = await focusInfo();
+        onButton = await page.evaluate(() => document.activeElement?.id === 'nms-a11y-open').catch(() => false);
+        if (onButton) rec(`Tab ${tabs}: keyboard focus ${f} (the menu button; aria-expanded ${await expanded()})`, fr);
+      }
+      if (!onButton) lines.push(`(The menu button was not reached after ${tabs} Tab presses.)`);
+      else {
+        await device.shell('input keyevent 66');
+        let fr = await settle();
+        rec(`Enter: dialog open ${await dialogOpen()}; aria-expanded ${await expanded()}; keyboard focus ${await focusInfo()}`, fr);
+        const inDialog = [];
+        for (let i = 1; i <= 24; i++) {
+          await tabKey(); fr = await settle();
+          const f = await focusInfo(); inDialog.push(f);
+          rec(`Tab ${i} in the dialog: keyboard focus ${f}`, fr);
+        }
+        await device.shell('input keyevent 111');
+        fr = await settle();
+        rec(`Escape: dialog open ${await dialogOpen()}; aria-expanded ${await expanded()}; keyboard focus ${await focusInfo()}`, fr);
+        sum.menu = { tabsToButton: tabs, distinctStopsInDialog: new Set(inDialog).size, stops: inDialog };
+      }
+      throw Object.assign(new Error('menu session complete'), { done: true });
     }
     // Tab order from the top of a freshly loaded page (the page just loaded when there was no linear read).
     if (methods.length) {
@@ -224,8 +261,10 @@ for (const pg of PAGES) {
     for (let k = 0; k < 2; k++) { await device.shell('input keyevent 111'); await sleep(600); }
     sum.tabs = { done, end, distinctStops: new Set(stops.filter(s => s !== '(page body)')).size, stops };
   } catch (e) {
-    sum.error = String(e).slice(0, 300);
-    lines.push(`error: ${sum.error}`);
+    if (!e.done) {
+      sum.error = String(e).slice(0, 300);
+      lines.push(`error: ${sum.error}`);
+    }
   }
   const dir = path.join('transcripts', pg.slug); fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'talkback-transcript.txt'), lines.join('\n') + '\n');

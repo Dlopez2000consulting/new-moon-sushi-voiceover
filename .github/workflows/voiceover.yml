@@ -15,6 +15,10 @@ on:
         description: "1 = run only the gallery photo-viewer scenario"
         default: "0"
         required: false
+      menu_only:
+        description: "1 = run only the accessibility-menu scenario (use with pages=home)"
+        default: "0"
+        required: false
       mode:
         description: "Transcript header line: the state of the site that is tested"
         default: "real session on the published site as it was on the session date"
@@ -52,6 +56,7 @@ jobs:
       VO_PAGES: ${{ matrix.page }}
       VO_READ_SCALE: ${{ inputs.read_scale }}
       VO_VIEWER_ONLY: ${{ inputs.viewer_only }}
+      VO_MENU_ONLY: ${{ inputs.menu_only }}
       VO_MODE: ${{ inputs.mode }}
       RUNNER_OS_LABEL: macos-15
     steps:

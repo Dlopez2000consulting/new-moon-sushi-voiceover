@@ -124,7 +124,9 @@ test.describe("VoiceOver — www.newmoonsushi.com", () => {
       const vo: any = voiceOver;
       // VO_VIEWER_ONLY=1 reruns only the gallery photo-viewer scenario.
       const viewerOnly = process.env.VO_VIEWER_ONLY === "1";
-      if (!viewerOnly) {
+      // VO_MENU_ONLY=1 runs only the accessibility-menu scenario (use it with pages=home).
+      const menuOnly = process.env.VO_MENU_ONLY === "1";
+      if (!viewerOnly && !menuOnly) {
       await run("Read-through from the top (VO-Right Arrow)", Math.round(pg.read * READ_SCALE), () => voiceOver.next({ capture: true }), false, t0 + READ_BUDGET_MS, 12 * 60 * 1000);
 
       await back();
@@ -144,7 +146,7 @@ test.describe("VoiceOver — www.newmoonsushi.com", () => {
       }
 
       // Gallery photo viewer: open the first photo with Enter, close it with Escape, see where keyboard focus goes (F5).
-      if (pg.slug === "gallery" && left() > 4 * 60 * 1000) {
+      if (pg.slug === "gallery" && !menuOnly && left() > 4 * 60 * 1000) {
         const phrases: string[] = []; const notes: string[] = [];
         try {
           await page.goto(url, { waitUntil: "load" });
@@ -171,11 +173,36 @@ test.describe("VoiceOver — www.newmoonsushi.com", () => {
         flush();
       }
 
+      // Accessibility menu: Tab to the menu button, open the dialog with Enter, Tab through it, close it with Escape.
+      if (menuOnly && left() > 3 * 60 * 1000) {
+        const title = "Accessibility menu: Tab to the menu button, open with Enter, Tab through the dialog, close with Escape";
+        const phrases: string[] = []; const notes: string[] = [];
+        const expanded = () => page.evaluate(() => document.getElementById("nms-a11y-open")?.getAttribute("aria-expanded") ?? "none");
+        const dialogOpen = () => page.evaluate(() => { const d = document.getElementById("nms-a11y-dialog"); return !!d && !d.hidden && getComputedStyle(d).display !== "none" && getComputedStyle(d).visibility !== "hidden"; });
+        try {
+          await back();
+          const onButton = () => page.evaluate(() => document.activeElement?.id === "nms-a11y-open");
+          let tabs = 0;
+          while (tabs < 40 && !(await onButton())) { await voiceOver.press("Tab"); tabs++; }
+          if (!(await onButton())) throw new Error(`menu button not reached after ${tabs} Tab presses (focus ${await focusInfo()})`);
+          phrases.push(await say());
+          notes.push(`Reached the menu button after ${tabs} Tab presses: ${await focusInfo()}; aria-expanded ${await expanded()}.`);
+          await voiceOver.press("Enter"); await page.waitForTimeout(1500); phrases.push(await say());
+          notes.push(`After Enter: dialog open ${await dialogOpen()}; aria-expanded ${await expanded()}; focus ${await focusInfo()}.`);
+          for (let i = 1; i <= 24; i++) { await voiceOver.press("Tab"); phrases.push(await say()); notes.push(`Tab ${i} in the dialog: focus ${await focusInfo()}.`); }
+          await voiceOver.press("Escape"); await page.waitForTimeout(1200); phrases.push(await say());
+          notes.push(`After Escape: dialog open ${await dialogOpen()}; aria-expanded ${await expanded()}; focus ${await focusInfo()}.`);
+          notes.push("Phrases: 1 the menu button, 2 Enter (open), 3-26 Tab inside the dialog, 27 Escape (close).");
+          sections.push({ title, phrases, end: "scenario complete", notes });
+        } catch (e) { sections.push({ title, phrases, end: `error: ${String(e).slice(0, 160)}`, notes }); }
+        flush();
+      }
+
       const spoken: string[] = await voiceOver.spokenPhraseLog().catch(() => [] as string[]);
       const total = sections.reduce((a, s) => a + s.phrases.length, 0);
       flush(spoken);
       await testInfo.attach(`voiceover-${pg.slug}-${browserName}`, { path: file, contentType: "text/plain" });
-      expect(total).toBeGreaterThan(viewerOnly ? 3 : 10);
+      expect(total).toBeGreaterThan(viewerOnly || menuOnly ? 3 : 10);
     });
   }
 });

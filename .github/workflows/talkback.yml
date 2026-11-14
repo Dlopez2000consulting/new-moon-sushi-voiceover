@@ -25,6 +25,10 @@ on:
         description: "Transcript header line: the state of the site that is tested"
         default: "real session on the published site after remediation (final verification)"
         required: false
+      menu:
+        description: "1 = one session on Home inside the accessibility menu (Tab to its button, Enter, Tab through the dialog, Escape)"
+        default: "0"
+        required: false
       target:
         description: "Emulator system image target (google_apis or google_apis_playstore)"
         default: "google_apis"
@@ -100,6 +104,7 @@ jobs:
       TB_TABS: ${{ inputs.tabs }}
       TB_READ_SCALE: ${{ inputs.read_scale }}
       TB_MODE: ${{ inputs.mode }}
+      TB_MENU: ${{ inputs.menu }}
     steps:
       - uses: actions/checkout@v4
       - name: Download the TalkBack build of this run
