@@ -1,0 +1,118 @@
+name: TalkBack transcripts (www.newmoonsushi.com)
+
+# TalkBack (Google's open-source build) on an Android emulator, with Chrome driven through Playwright's Android support.
+# spike=1 runs only a local test page served on the runner (no request to the live site), to check the setup.
+on:
+  workflow_dispatch:
+    inputs:
+      spike:
+        description: "1 = local test page only (no request to the live site)"
+        default: "1"
+        required: false
+      pages:
+        description: "Pages when spike=0 (comma list: home,gallery,menu,lunch-menu,dinner-menu,sushi-menu,dessert-menu,sake-menu,contact,accessibility,sitemap)"
+        default: "home"
+        required: false
+      target:
+        description: "Emulator system image target (google_apis or google_apis_playstore)"
+        default: "google_apis"
+        required: false
+      api:
+        description: "Android API level"
+        default: "34"
+        required: false
+      tabs:
+        description: "Tab presses per page"
+        default: "40"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-talkback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: google/talkback
+          path: tb
+      - name: Record the TalkBack source commit
+        run: git -C tb log -1 --format='%H %cs %s' | tee talkback-source.txt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+      # Chrome treats only com.google.android.marvin.talkback as a known screen reader, and TalkBack logs its speech
+      # only when the log level is VERBOSE (2); the default is ERROR (6).
+      - name: Patch package id and log level
+        run: |
+          set -x
+          grep -rn "talkbackApplicationId" tb/*.gradle || true
+          sed -i 's/com\.android\.talkback"/com.google.android.marvin.talkback"/' tb/version.gradle
+          grep -rn "talkbackApplicationId" tb/version.gradle
+          f=$(grep -rl 'name="pref_log_level_default"' tb/talkback/src/main/res/values/ | head -n1)
+          echo "log level file: $f"
+          sed -i 's|<string name="pref_log_level_default"[^>]*>[0-9]*</string>|<string name="pref_log_level_default" translatable="false">2</string>|' "$f"
+          grep -n 'pref_log_level_default' "$f"
+      - name: Build TalkBack (debug)
+        working-directory: tb
+        run: |
+          export ANDROID_SDK="$ANDROID_HOME"
+          if [ -x ./build.sh ]; then ./build.sh || gradle assembleDebug; else gradle assembleDebug; fi
+          find . -name '*.apk' -newer ../talkback-source.txt | tee ../apk-list.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: talkback-apk
+          path: |
+            tb/**/build/outputs/apk/**/*.apk
+            talkback-source.txt
+            apk-list.txt
+          if-no-files-found: error
+
+  talkback:
+    needs: build-talkback
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TB_SPIKE: ${{ inputs.spike }}
+      TB_PAGES: ${{ inputs.pages }}
+      TB_TABS: ${{ inputs.tabs }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: talkback-apk
+          path: apk
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install Playwright (Android support only, no browsers)
+        run: npm install --no-save --no-audit --no-fund playwright-core@1.63.0
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run TalkBack in the emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.api }}
+          target: ${{ inputs.target }}
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: bash talkback/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: talkback-results
+          path: |
+            logs/**
+            transcripts/**
+          if-no-files-found: warn
