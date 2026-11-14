@@ -203,18 +203,26 @@ for (const pg of PAGES) {
       lines.push('', '### Tab order (Tab key; the page was loaded again first)');
       say(reloaded).forEach(u => lines.push(`  TalkBack (page loaded): ${u}`));
     } else lines.push('', '### Tab order (Tab key)');
-    const stops = [];
+    // Chrome's address bar can keep the keyboard focus from an earlier page: Escape returns it to the page.
+    for (let k = 0; k < 2; k++) { await device.shell('input keyevent 111'); await sleep(600); }
+    await sleep(2500);
+    pull(); await settle(6000);
+    const stops = []; let outside = 0, done = 0, end = `${TABS} Tab presses (the planned length)`;
     for (let i = 1; i <= TABS; i++) {
       await tabKey();
       const fr = await settle();
       const f = await focusInfo();
-      stops.push(f);
+      stops.push(f); done = i;
       const us = say(fr);
       lines.push(`Tab ${i}: keyboard focus ${f}`);
       if (!us.length) lines.push('  TalkBack: (nothing spoken)');
       us.forEach(u => lines.push(`  TalkBack: ${u}`));
+      // Three presses in a row outside the page: the Tab order has left the page for the browser's own controls.
+      if (f === '(page body)') { if (++outside >= 3) { end = 'the Tab order left the page for the browser\'s own controls'; break; } } else outside = 0;
     }
-    sum.tabs = { done: TABS, distinctStops: new Set(stops).size, stops };
+    lines.push(`(Tab walk ended after ${done} presses: ${end}.)`);
+    for (let k = 0; k < 2; k++) { await device.shell('input keyevent 111'); await sleep(600); }
+    sum.tabs = { done, end, distinctStops: new Set(stops.filter(s => s !== '(page body)')).size, stops };
   } catch (e) {
     sum.error = String(e).slice(0, 300);
     lines.push(`error: ${sum.error}`);
