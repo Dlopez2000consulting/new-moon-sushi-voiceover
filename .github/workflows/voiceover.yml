@@ -63,8 +63,16 @@ jobs:
           cache: npm
 
       # Accessibility permissions in the user TCC.db, AppleScript control of VoiceOver, welcome dialog suppressed.
+      # Some runners refuse the first keystrokes ("osascript is not allowed to send keystrokes") while the new
+      # permissions settle, so the setup is tried up to three times.
       - name: Prepare macOS for VoiceOver automation
-        run: npx -y @guidepup/setup@0.29.1 setup --ci
+        run: |
+          for i in 1 2 3; do
+            if npx -y @guidepup/setup@0.29.1 setup --ci; then exit 0; fi
+            echo "guidepup setup attempt $i failed; trying again in 30 s"
+            sleep 30
+          done
+          exit 1
 
       # The runner image maps the bottom-right hot corner to Quick Note, which interrupts VoiceOver read-throughs.
       - name: Disable macOS hot corners (Quick Note)
