@@ -8,6 +8,7 @@
 import { _android as android } from 'playwright-core';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 const SPIKE = process.env.TB_SPIKE !== '0';
 const TABS = Number(process.env.TB_TABS || 20);
@@ -112,6 +113,17 @@ const sh = async c => String(await device.shell(c)).trim();
 const swipeRight = () => device.shell('input swipe 270 1350 830 1350 300');
 const altRight = () => device.shell('input keycombination KEYCODE_ALT_LEFT KEYCODE_DPAD_RIGHT');
 const downArrow = () => device.shell('input keyevent 20');
+// Keys sent through the emulator console arrive as hardware keyboard events, which TalkBack receives (keys injected
+// with "input" from the shell reach the app but not TalkBack's own keyboard commands).
+let emuNote = '';
+const emu = seq => {
+  let out = '';
+  try { out = execFileSync('adb', ['-s', device.serial(), 'emu', 'event', 'send', ...seq], { timeout: 15000 }).toString().trim(); } catch (e) { out = 'ERR ' + String(e.stderr || e.message).slice(0, 120); }
+  if (!emuNote) { emuNote = out || '(no answer)'; console.log('emu event send:', emuNote); }
+};
+const SYN = 'EV_SYN:0:0';
+const emuDown = async () => emu(['EV_KEY:KEY_DOWN:1', SYN, 'EV_KEY:KEY_DOWN:0', SYN]);
+const emuAltRight = async () => emu(['EV_KEY:KEY_LEFTALT:1', SYN, 'EV_KEY:KEY_RIGHT:1', SYN, 'EV_KEY:KEY_RIGHT:0', SYN, 'EV_KEY:KEY_LEFTALT:0', SYN]);
 const tabKey = () => device.shell('input keyevent 61');
 const ver = await sh('dumpsys package com.android.chrome 2>/dev/null | grep -m1 versionName');
 const tbv = await sh('dumpsys package com.google.android.marvin.talkback 2>/dev/null | grep -m1 versionName');
@@ -138,7 +150,7 @@ const focusInfo = () => page.evaluate(() => {
 const load = async url => { await page.goto(url, { waitUntil: 'load', timeout: 180000 }); return settle(15000); };
 
 async function linearRead(n, method) {
-  const act = { alt: altRight, down: downArrow, swipe: swipeRight }[method] || swipeRight;
+  const act = { alt: altRight, down: downArrow, swipe: swipeRight, emudown: emuDown, emualt: emuAltRight }[method] || swipeRight;
   const rows = []; let silent = 0, end = `${n} gestures (the planned length)`;
   for (let i = 1; i <= n; i++) {
     await act();
@@ -149,8 +161,8 @@ async function linearRead(n, method) {
   }
   return { rows, end };
 }
-const METHOD_LABEL = { swipe: 'TalkBack next item: one-finger swipe right', alt: 'TalkBack next item: Alt + Right Arrow on the emulator keyboard', down: 'Down Arrow on the emulator keyboard in TalkBack browse mode' };
-let METHOD = process.env.TB_NEXT || 'down';
+const METHOD_LABEL = { swipe: 'TalkBack next item: one-finger swipe right', alt: 'TalkBack next item: Alt + Right Arrow, injected from the shell', down: 'Down Arrow injected from the shell, TalkBack browse mode', emudown: 'Down Arrow on the emulator keyboard, TalkBack browse mode', emualt: 'TalkBack next item: Alt + Right Arrow on the emulator keyboard' };
+let METHOD = process.env.TB_NEXT || 'emudown';
 
 for (const pg of PAGES) {
   const lines = [
@@ -170,7 +182,7 @@ for (const pg of PAGES) {
     lines.push('### After the page loaded');
     say(loaded).forEach(u => lines.push(`  TalkBack: ${u}`));
     const n = Math.max(1, Math.round((NEXT[pg.slug] || 60) * SCALE));
-    const methods = SPIKE ? ['down', 'alt', 'swipe'] : [METHOD];
+    const methods = SPIKE ? ['emudown', 'emualt'] : [METHOD];
     for (const [mi, method] of methods.entries()) {
       if (mi > 0) { await load(pg.url); }
       let r = await linearRead(n, method);
