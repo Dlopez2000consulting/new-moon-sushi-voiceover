@@ -53,10 +53,11 @@ jobs:
         run: |
           set -x
           grep -rn "talkbackApplicationId" tb/*.gradle || true
-          sed -i 's/com\.android\.talkback"/com.google.android.marvin.talkback"/' tb/version.gradle
-          grep -rn "talkbackApplicationId" tb/version.gradle
-          f=$(grep -rl 'name="pref_log_level_default"' tb/talkback/src/main/res/values/ | head -n1)
+          sed -i 's/talkbackApplicationId = "com\.android\.talkback"/talkbackApplicationId = "com.google.android.marvin.talkback"/' tb/shared.gradle
+          grep -n 'talkbackApplicationId = "com.google.android.marvin.talkback"' tb/shared.gradle
+          f=$(grep -rl --include='*.xml' 'name="pref_log_level_default"' tb | head -n1)
           echo "log level file: $f"
+          test -n "$f"
           sed -i 's|<string name="pref_log_level_default"[^>]*>[0-9]*</string>|<string name="pref_log_level_default" translatable="false">2</string>|' "$f"
           grep -n 'pref_log_level_default' "$f"
       - name: Build TalkBack (debug)
