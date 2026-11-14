@@ -78,6 +78,9 @@ adb shell settings put secure enabled_accessibility_services "$SVC"
 adb shell settings put secure accessibility_enabled 1
 for i in $(seq 1 30); do t=$(adb shell settings get secure touch_exploration_enabled | tr -d '\r'); echo "touch_exploration_enabled=$t"; [ "$t" = "1" ] && break; sleep 2; done 2>&1 | tee -a logs/setup.txt
 sleep 8
+# TalkBack opens its tutorial the first time it starts; go back to the home screen.
+adb shell input keyevent KEYCODE_HOME || true
+sleep 3
 adb shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS >/dev/null 2>&1 || true
 log "focus: $(adb shell dumpsys window | grep -m2 -E 'mCurrentFocus|mFocusedApp' | tr -d '\r' | tr '\n' ' ')"
 adb shell dumpsys accessibility > logs/dumpsys-accessibility.txt 2>&1 || true

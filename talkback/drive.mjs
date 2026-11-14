@@ -109,8 +109,9 @@ const [device] = await android.devices();
 if (!device) { console.log('NO DEVICE'); process.exit(0); }
 console.log('device', device.model(), device.serial());
 const sh = async c => String(await device.shell(c)).trim();
-const swipeRight = () => device.shell('input swipe 270 1350 830 1350 110');
+const swipeRight = () => device.shell('input swipe 270 1350 830 1350 300');
 const altRight = () => device.shell('input keycombination KEYCODE_ALT_LEFT KEYCODE_DPAD_RIGHT');
+const downArrow = () => device.shell('input keyevent 20');
 const tabKey = () => device.shell('input keyevent 61');
 const ver = await sh('dumpsys package com.android.chrome 2>/dev/null | grep -m1 versionName');
 const tbv = await sh('dumpsys package com.google.android.marvin.talkback 2>/dev/null | grep -m1 versionName');
@@ -137,7 +138,7 @@ const focusInfo = () => page.evaluate(() => {
 const load = async url => { await page.goto(url, { waitUntil: 'load', timeout: 180000 }); return settle(15000); };
 
 async function linearRead(n, method) {
-  const act = method === 'alt' ? altRight : swipeRight;
+  const act = { alt: altRight, down: downArrow, swipe: swipeRight }[method] || swipeRight;
   const rows = []; let silent = 0, end = `${n} gestures (the planned length)`;
   for (let i = 1; i <= n; i++) {
     await act();
@@ -148,8 +149,8 @@ async function linearRead(n, method) {
   }
   return { rows, end };
 }
-const METHOD_LABEL = { swipe: 'TalkBack next item: one-finger swipe right', alt: 'TalkBack next item: Alt + Right Arrow on the emulator keyboard' };
-let METHOD = process.env.TB_NEXT || 'swipe';
+const METHOD_LABEL = { swipe: 'TalkBack next item: one-finger swipe right', alt: 'TalkBack next item: Alt + Right Arrow on the emulator keyboard', down: 'Down Arrow on the emulator keyboard in TalkBack browse mode' };
+let METHOD = process.env.TB_NEXT || 'down';
 
 for (const pg of PAGES) {
   const lines = [
@@ -169,17 +170,10 @@ for (const pg of PAGES) {
     lines.push('### After the page loaded');
     say(loaded).forEach(u => lines.push(`  TalkBack: ${u}`));
     const n = Math.max(1, Math.round((NEXT[pg.slug] || 60) * SCALE));
-    const methods = SPIKE ? ['swipe', 'alt'] : [METHOD];
+    const methods = SPIKE ? ['down', 'alt', 'swipe'] : [METHOD];
     for (const [mi, method] of methods.entries()) {
       if (mi > 0) { await load(pg.url); }
       let r = await linearRead(n, method);
-      if (!SPIKE && method === 'swipe' && r.rows.slice(0, 6).every(x => !x.length)) {
-        // The gesture did nothing: use TalkBack's keyboard command for this and the following pages.
-        lines.push('', `(The swipe gesture produced no speech in the first 6 tries; the read uses Alt + Right Arrow instead.)`);
-        METHOD = 'alt'; sum.method = 'alt';
-        await load(pg.url);
-        r = await linearRead(n, 'alt');
-      }
       lines.push('', `### Linear reading (${METHOD_LABEL[SPIKE ? method : METHOD]})`);
       r.rows.forEach((fr, i) => {
         const us = say(fr);
