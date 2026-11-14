@@ -172,7 +172,9 @@ for (const pg of PAGES) {
     `Page: ${pg.url}`,
     `Mode: ${SPIKE ? 'test page served on the runner' : MODE}`,
     `Session date (UTC): ${new Date().toISOString()}`,
-    `Method: linear reading with TalkBack's next-item command, one command at a time after TalkBack finished speaking; then the Tab order with the Tab key after loading the page again. TalkBack's spoken text is read from logcat, where this build logs every spoken fragment.`,
+    SCALE > 0
+      ? `Method: linear reading with TalkBack's next-item command, one command at a time after TalkBack finished speaking; then the Tab order with the Tab key after loading the page again. TalkBack's spoken text is read from logcat, where this build logs every spoken fragment.`
+      : `Method: the Tab order with the Tab key of the emulator keyboard, one key at a time after TalkBack finished speaking, from the top of a freshly loaded page. TalkBack's spoken text is read from logcat, where this build logs every spoken fragment. Linear reading with TalkBack's own navigation commands (swipe gestures or keyboard commands) is not included: on the emulator those commands did not move into the web content.`,
     `─`.repeat(56), ''];
   const sum = { slug: pg.slug, url: pg.url, sessionUtc: new Date().toISOString(), method: METHOD, next: null, tabs: null, utterances: 0, error: null };
   const say = fr => { const us = utterances(fr); sum.utterances += us.length; return us; };
@@ -182,7 +184,7 @@ for (const pg of PAGES) {
     lines.push('### After the page loaded');
     say(loaded).forEach(u => lines.push(`  TalkBack: ${u}`));
     const n = Math.max(1, Math.round((NEXT[pg.slug] || 60) * SCALE));
-    const methods = SPIKE ? ['emudown', 'emualt'] : [METHOD];
+    const methods = SCALE <= 0 ? [] : SPIKE ? ['emudown', 'emualt'] : [METHOD];
     for (const [mi, method] of methods.entries()) {
       if (mi > 0) { await load(pg.url); }
       let r = await linearRead(n, method);
@@ -195,10 +197,12 @@ for (const pg of PAGES) {
       lines.push(`(Read ended after ${r.rows.length} commands: ${r.end}.)`);
       sum.next = { ...(sum.next || {}), [SPIKE ? method : 'read']: { planned: n, done: r.rows.length, spoken: r.rows.filter(x => x.length).length, end: r.end } };
     }
-    // Tab order from the top of a freshly loaded page.
-    const reloaded = await load(pg.url);
-    lines.push('', '### Tab order (Tab key; the page was loaded again first)');
-    say(reloaded).forEach(u => lines.push(`  TalkBack (page loaded): ${u}`));
+    // Tab order from the top of a freshly loaded page (the page just loaded when there was no linear read).
+    if (methods.length) {
+      const reloaded = await load(pg.url);
+      lines.push('', '### Tab order (Tab key; the page was loaded again first)');
+      say(reloaded).forEach(u => lines.push(`  TalkBack (page loaded): ${u}`));
+    } else lines.push('', '### Tab order (Tab key)');
     const stops = [];
     for (let i = 1; i <= TABS; i++) {
       await tabKey();
