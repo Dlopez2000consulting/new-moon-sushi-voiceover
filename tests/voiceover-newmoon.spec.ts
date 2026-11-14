@@ -1,6 +1,7 @@
-// Real macOS VoiceOver session, driven with Guidepup, against the published www.newmoonsushi.com (baseline, before any
-// remediation). One test per page template. Each test writes transcripts/<slug>/voiceover-transcript-<browser>.txt
-// (header + "### " sections + numbered phrases). Read-only: only GET requests reach the site; no form exists on it.
+// Real macOS VoiceOver session, driven with Guidepup, against the published www.newmoonsushi.com as it is on the session
+// date (used for the baseline of 28 October 2026 and for the verification runs after remediation). One test per page.
+// Each test writes transcripts/<slug>/voiceover-transcript-<browser>.txt (header + "### " sections + numbered phrases).
+// Read-only: only GET requests reach the site; no form exists on it.
 import { voiceOverTest as test } from "@guidepup/playwright";
 import { expect } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -12,9 +13,18 @@ const ORIGIN = "https://www.newmoonsushi.com";
 const PAGES = [
   { slug: "home", path: "/", read: 200 },
   { slug: "gallery", path: "/gallery", read: 250 },
+  { slug: "menu", path: "/menu", read: 200 },
+  { slug: "lunch-menu", path: "/lunch-menu", read: 500 },
+  { slug: "dinner-menu", path: "/dinner-menu", read: 500 },
   { slug: "sushi-menu", path: "/sushi-menu", read: 500 },
+  { slug: "dessert-menu", path: "/dessert-menu", read: 250 },
+  { slug: "sake-menu", path: "/sake-menu", read: 400 },
   { slug: "contact", path: "/contact", read: 200 },
+  { slug: "accessibility", path: "/accessibility", read: 250 },
+  { slug: "sitemap", path: "/sitemap", read: 250 },
 ];
+// VO_MODE: one line for the transcript header that says what state of the site was tested.
+const MODE = process.env.VO_MODE || "real session on the published site as it was on the session date";
 const wanted = (process.env.VO_PAGES ?? "all").split(",").map((s) => s.trim()).filter(Boolean);
 const selected = wanted.includes("all") ? PAGES : PAGES.filter((p) => wanted.includes(p.slug));
 const HEADING_STEPS = Number(process.env.VO_HEADING_STEPS ?? 20);
@@ -26,7 +36,7 @@ const READ_BUDGET_MS = Number(process.env.VO_READ_BUDGET_MIN ?? 30) * 60 * 1000;
 type Section = { title: string; phrases: string[]; end: string; notes?: string[] };
 const num = (i: number) => String(i).padStart(3, " ");
 
-test.describe("VoiceOver — www.newmoonsushi.com (baseline)", () => {
+test.describe("VoiceOver — www.newmoonsushi.com", () => {
   for (const pg of selected) {
     test(`${pg.slug}: read-through, headings, landmarks, Tab order${pg.slug === "gallery" ? ", photo viewer" : ""}`, async ({ page, voiceOver, browserName }, testInfo) => {
       const t0 = Date.now();
@@ -83,7 +93,7 @@ test.describe("VoiceOver — www.newmoonsushi.com (baseline)", () => {
         `Browser: ${browserName} (Playwright project "${testInfo.project.name}")`,
         `Runner: GitHub Actions ${process.env.RUNNER_OS_LABEL ?? "local"}`,
         `Session date (UTC): ${new Date().toISOString()}`,
-        `Mode: real session, published site, no remediation applied`,
+        `Mode: ${MODE}`,
         `Read-through: up to ${Math.round(pg.read * READ_SCALE)} steps (read_scale ${READ_SCALE}), time budget ${Math.round(READ_BUDGET_MS / 60000)} min`,
         `Phrases captured: ${total}`,
         ``,

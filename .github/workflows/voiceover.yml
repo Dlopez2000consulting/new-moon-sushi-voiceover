@@ -8,12 +8,16 @@ on:
         default: "1"
         required: false
       pages:
-        description: "all, or a comma-separated list of pages (home,gallery,sushi-menu,contact)"
+        description: "all, or a comma-separated list of pages (home,gallery,menu,lunch-menu,dinner-menu,sushi-menu,dessert-menu,sake-menu,contact,accessibility,sitemap)"
         default: "all"
         required: false
       viewer_only:
         description: "1 = run only the gallery photo-viewer scenario"
         default: "0"
+        required: false
+      mode:
+        description: "Transcript header line: the state of the site that is tested"
+        default: "real session on the published site as it was on the session date"
         required: false
 
 permissions:
@@ -29,7 +33,8 @@ jobs:
         env:
           WANT: ${{ inputs.pages || 'all' }}
         run: |
-          all='[{"page":"home","delay":0},{"page":"gallery","delay":20},{"page":"sushi-menu","delay":40},{"page":"contact","delay":60}]'
+          # Starts 60 s apart, so the runners load their pages at different times (GET only, 1 request per second each).
+          all='[{"page":"home","delay":0},{"page":"gallery","delay":60},{"page":"menu","delay":120},{"page":"lunch-menu","delay":180},{"page":"dinner-menu","delay":240},{"page":"sushi-menu","delay":300},{"page":"dessert-menu","delay":360},{"page":"sake-menu","delay":420},{"page":"contact","delay":480},{"page":"accessibility","delay":540},{"page":"sitemap","delay":600}]'
           m=$(echo "$all" | jq -c --arg w "$WANT" 'if $w == "all" then . else map(select(. as $j | ("," + $w + ",") | contains("," + $j.page + ","))) end')
           echo "matrix=$m" >> "$GITHUB_OUTPUT"; echo "$m"
 
@@ -47,6 +52,7 @@ jobs:
       VO_PAGES: ${{ matrix.page }}
       VO_READ_SCALE: ${{ inputs.read_scale }}
       VO_VIEWER_ONLY: ${{ inputs.viewer_only }}
+      VO_MODE: ${{ inputs.mode }}
       RUNNER_OS_LABEL: macos-15
     steps:
       - uses: actions/checkout@v6
