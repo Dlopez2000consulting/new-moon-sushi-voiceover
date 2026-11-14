@@ -78,7 +78,7 @@ jobs:
   talkback:
     needs: build-talkback
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 75
     env:
       TB_SPIKE: ${{ inputs.spike }}
       TB_PAGES: ${{ inputs.pages }}
@@ -107,7 +107,11 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          ram-size: 4096M
+          cores: 4
+          disk-size: 8G
+          # -writable-system: run.sh removes the TalkBack that ships in the system image (see talkback/run.sh).
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -writable-system
           script: bash talkback/run.sh
       - uses: actions/upload-artifact@v4
         if: always()

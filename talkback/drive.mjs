@@ -30,8 +30,9 @@ await context.route(/^https?:\/\/(www\.)?newmoonsushi\.com\//, async route => {
   return route.continue();
 });
 const page = context.pages()[0] || await context.newPage();
-const ver = String(await device.shell('dumpsys package com.android.chrome | grep -m1 versionName')).trim();
-const tbv = String(await device.shell('dumpsys package com.google.android.marvin.talkback | grep -m1 versionName')).trim();
+const ver = String(await device.shell('dumpsys package com.android.chrome 2>/dev/null | grep -m1 versionName')).trim();
+const tbv = String(await device.shell('dumpsys package com.google.android.marvin.talkback 2>/dev/null | grep -m1 versionName')).trim();
+let src = ''; try { src = fs.readFileSync('apk/talkback-source.txt', 'utf8').trim().split(' ').slice(0, 2).join(' of '); } catch {}
 const focusInfo = () => page.evaluate(() => {
   const e = document.activeElement; if (!e || e === document.body) return '(page body)';
   const name = (e.getAttribute('aria-label') || e.innerText || e.getAttribute('alt') || '').trim().replace(/\s+/g, ' ').slice(0, 60);
@@ -40,7 +41,7 @@ const focusInfo = () => page.evaluate(() => {
 
 for (const pg of PAGES) {
   const lines = [
-    `Screen reader: TalkBack (${tbv || 'version unknown'}; Google open-source build) on an Android emulator`,
+    `Screen reader: TalkBack (${tbv || 'version unknown'}; built from Google's open-source repository${src ? `, commit ${src}` : ''}) on an Android emulator`,
     `Browser: Chrome (${ver || 'version unknown'}), driven through Playwright's Android support`,
     `Page: ${pg.url}`,
     `Session date (UTC): ${new Date().toISOString()}`,
